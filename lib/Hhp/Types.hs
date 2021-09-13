@@ -148,6 +148,8 @@ data Cradle = Cradle {
   , cradleCabalFile  :: Maybe FilePath
   -- | Package database stack
   , cradlePkgDbStack  :: [GhcPkgDb]
+  -- | If True, along with GHC_PACKAGE_PATH environment
+  , cradleUsePkgPath :: Bool
   } deriving (Eq, Show)
 
 ----------------------------------------------------------------

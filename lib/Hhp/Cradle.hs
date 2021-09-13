@@ -8,6 +8,7 @@ import qualified Control.Exception as E
 import Control.Monad (filterM)
 import Data.List (isSuffixOf)
 import System.Directory (getCurrentDirectory, getDirectoryContents, doesFileExist)
+import System.Environment (lookupEnv)
 import System.FilePath ((</>), takeDirectory)
 
 import Hhp.Types
@@ -22,7 +23,21 @@ import Hhp.GhcPkg
 findCradle :: IO Cradle
 findCradle = do
     wdir <- getCurrentDirectory
-    cabalCradle wdir <|> sandboxCradle wdir <|> plainCradle wdir
+    pkgPathCradle wdir <|> cabalCradle wdir <|> sandboxCradle wdir <|> plainCradle wdir
+
+pkgPathCradle :: FilePath -> IO Cradle
+pkgPathCradle wdir = do
+    let checkPP Nothing   =  fail "pkgPathCradle: GHC_PACKAGE_PATH environment not found."
+        checkPP (Just "") =  fail "pkgPathCradle: GHC_PACKAGE_PATH environment is empty."
+        checkPP (Just _)  =  return ()
+    checkPP =<< lookupEnv "GHC_PACKAGE_PATH"
+    return Cradle
+      { cradleCurrentDir = wdir
+      , cradleRootDir    = wdir
+      , cradleCabalFile  = Nothing
+      , cradlePkgDbStack = []
+      , cradleUsePkgPath = True
+      }
 
 cabalCradle :: FilePath -> IO Cradle
 cabalCradle wdir = do
@@ -33,6 +48,7 @@ cabalCradle wdir = do
       , cradleRootDir    = rdir
       , cradleCabalFile  = Just cfile
       , cradlePkgDbStack = pkgDbStack
+      , cradleUsePkgPath = False
       }
 
 sandboxCradle :: FilePath -> IO Cradle
@@ -44,6 +60,7 @@ sandboxCradle wdir = do
       , cradleRootDir    = rdir
       , cradleCabalFile  = Nothing
       , cradlePkgDbStack = pkgDbStack
+      , cradleUsePkgPath = False
       }
 
 plainCradle :: FilePath -> IO Cradle
@@ -52,6 +69,7 @@ plainCradle wdir = return Cradle {
       , cradleRootDir    = wdir
       , cradleCabalFile  = Nothing
       , cradlePkgDbStack = [GlobalDb]
+      , cradleUsePkgPath = False
       }
 
 -- Just for testing
