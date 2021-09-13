@@ -84,10 +84,12 @@ initializeFlagsWithCradle ::
         -> Cradle
         -> Ghc ()
 initializeFlagsWithCradle opt cradle
+  | pkgPath   = withSandbox
   | cabal     = withCabal <|> withSandbox
   | otherwise = withSandbox
   where
     mCradleFile = cradleCabalFile cradle
+    pkgPath = cradleUsePkgPath cradle
     cabal = isJust mCradleFile
     ghcopts = ghcOpts opt
     withCabal = do
