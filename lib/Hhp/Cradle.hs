@@ -30,10 +30,11 @@ pkgPathCradle wdir = do
     let checkPP Nothing   =  fail "pkgPathCradle: GHC_PACKAGE_PATH environment not found."
         checkPP (Just "") =  fail "pkgPathCradle: GHC_PACKAGE_PATH environment is empty."
         checkPP (Just _)  =  return ()
+    (rdir,_) <- cabalDir wdir
     checkPP =<< lookupEnv "GHC_PACKAGE_PATH"
     return Cradle
       { cradleCurrentDir = wdir
-      , cradleRootDir    = wdir
+      , cradleRootDir    = rdir
       , cradleCabalFile  = Nothing
       , cradlePkgDbStack = []
       , cradleUsePkgPath = True
