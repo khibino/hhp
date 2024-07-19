@@ -24,8 +24,8 @@ checkSyntax
     -> IO String
 checkSyntax _ _ [] = return ""
 checkSyntax opt cradle files = withGHC sessionName $ do
-    initializeFlagsWithCradle opt cradle
-    either id id <$> check opt files
+    getImports <- initializeFlagsWithCradle' opt cradle
+    either id id <$> check opt getImports files
   where
     sessionName = case files of
         [file] -> file
@@ -37,11 +37,12 @@ checkSyntax opt cradle files = withGHC sessionName $ do
 --   Warnings and errors are returned.
 check
     :: Options
+    -> ([FilePath] -> [IncludeDir])
     -> [FilePath]
     -- ^ The target files.
     -> Ghc (Either String String)
-check opt fileNames =
-    withLogger opt (setAllWarningFlags . setPartialSignatures . setDeferTypedHoles) $
+check opt getImports fileNames =
+    withLogger opt (addImportPaths (getImports fileNames) . setAllWarningFlags . setPartialSignatures . setDeferTypedHoles) $
         setTargetFiles fileNames
 
 ----------------------------------------------------------------
