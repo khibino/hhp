@@ -105,8 +105,8 @@ initializeFlagsWithCradle opt cradle
     withCabal = do
         pkgDesc <- liftIO $ parseCabalFile $ fromJust mCradleFile
         compOpts <- liftIO $ getCompilerOptions ghcopts cradle pkgDesc
-        initSession CabalPkg opt compOpts
-    withSandbox = initSession SingleFile opt compOpts
+        initSession CabalPkg compOpts
+    withSandbox = initSession SingleFile compOpts
       where
         pkgOpts = ghcDbStackOpts $ cradlePkgDbStack cradle
         compOpts
@@ -119,10 +119,9 @@ initializeFlagsWithCradle opt cradle
 
 initSession
     :: Build
-    -> Options
     -> CompilerOptions
     -> Ghc ()
-initSession build Options{} CompilerOptions{..} = do
+initSession build CompilerOptions{..} = do
     df <- G.getSessionDynFlags
     void $
         G.setSessionDynFlags
