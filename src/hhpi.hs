@@ -112,7 +112,7 @@ main =
         mvar <- liftIO newEmptyMVar
         mlibdir <- getSystemLibDir
         void $ forkIO $ setupDB cradle mlibdir opt mvar
-        run cradle mlibdir opt $ loop opt S.empty mvar
+        run cradle mlibdir opt $ \getImports -> loop opt getImports S.empty mvar
       where
         -- this is just in case.
         -- If an error is caught here, it is a bug of Hhp library.
@@ -126,29 +126,31 @@ replace (x : xs) = x : replace xs
 
 ----------------------------------------------------------------
 
-run :: Cradle -> Maybe FilePath -> Options -> Ghc a -> IO a
+type GetImports = [FilePath] -> [FilePath]
+
+run :: Cradle -> Maybe FilePath -> Options -> (GetImports -> Ghc a) -> IO a
 run cradle mlibdir opt body = runGhc mlibdir $ do
-    initializeFlagsWithCradle opt cradle
-    body
+    filterImports <- initializeFlagsWithCradle' opt cradle
+    body filterImports
 
 ----------------------------------------------------------------
 
 setupDB :: Cradle -> Maybe FilePath -> Options -> MVar SymMdlDb -> IO ()
 setupDB cradle mlibdir opt mvar = E.handle handler $ do
-    db <- run cradle mlibdir opt getSymMdlDb
+    db <- run cradle mlibdir opt $ const getSymMdlDb
     putMVar mvar db
   where
     handler (SomeException _) = return () -- fixme: put emptyDb?
 
 ----------------------------------------------------------------
 
-loop :: Options -> Set FilePath -> MVar SymMdlDb -> Ghc ()
-loop opt set mvar = do
+loop :: Options -> GetImports -> Set FilePath -> MVar SymMdlDb -> Ghc ()
+loop opt getImports set mvar = do
     cmdArg <- liftIO getLine
     let (cmd, arg') = break (== ' ') cmdArg
         arg = dropWhile (== ' ') arg'
     (ret, ok, set') <- case cmd of
-        "check" -> checkStx opt set arg
+        "check" -> checkStx opt getImports set arg
         "find" -> findSym opt set arg mvar
         "lint" -> lintStx opt set arg
         "info" -> showInfo opt set arg
@@ -165,19 +167,20 @@ loop opt set mvar = do
         else do
             liftIO $ putStrLn $ "NG " ++ replace ret
     liftIO $ hFlush stdout
-    when ok $ loop opt set' mvar
+    when ok $ loop opt getImports set' mvar
 
 ----------------------------------------------------------------
 
 checkStx
     :: Options
+    -> GetImports
     -> Set FilePath
     -> FilePath
     -> Ghc (String, Bool, Set FilePath)
-checkStx opt set file = do
+checkStx opt getImports set file = do
     set' <- newFileSet set file
     let files = S.toList set'
-    eret <- check opt files
+    eret <- check opt getImports files
     case eret of
         Right ret -> return (ret, True, set')
         Left ret -> return (ret, True, set) -- fxime: set
