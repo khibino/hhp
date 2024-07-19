@@ -3,6 +3,7 @@
 
 module Hhp.CabalApi (
     getCompilerOptions,
+    getImportDirectories,
     parseCabalFile,
     cabalAllBuildInfo,
     cabalDependPackages,
@@ -46,11 +47,12 @@ import GHC.Utils.Monad (liftIO)
 
 import Control.Exception (throwIO)
 import Control.Monad (filterM)
+import Data.List (isPrefixOf)
 import Data.Maybe (fromMaybe, mapMaybe, maybeToList)
 import Data.Set (fromList, toList)
 import System.Directory (doesFileExist)
 import System.Environment (lookupEnv)
-import System.FilePath (dropExtension, takeFileName, (</>))
+import System.FilePath (dropExtension, isAbsolute, splitDirectories, takeFileName, (</>))
 
 import Hhp.GhcPkg
 import Hhp.Types
@@ -78,6 +80,37 @@ getCompilerOptions ghcopts cradle pkgDesc = do
         attachPackageIds ps $
             removeThem (problematicPackages ++ [thisPkg]) $
                 cabalDependPackages buildInfos
+
+getImportDirectories
+  :: FilePath
+  -> FilePath
+  -> PackageDescription
+  -> [FilePath]
+  -> [IncludeDir]
+getImportDirectories cdir wdir pkgDesc fileNames =
+    uniqueAndSort $ concat $ libSrcDirSets ++ otherSelected
+  where
+    otherSelected =  [ dset | dset <- otherSrcDirSets, any (\fn -> any (`isSuperDir` fn) dset) absFileNames ]
+    (libSrcDirSets, otherSrcDirSets) = getImportDirSets cdir wdir pkgDesc
+    absFileNames = map toAbs fileNames
+    toAbs name
+        | isAbsolute name  = name
+        | otherwise        = cdir </> name
+
+isSuperDir :: FilePath -> FilePath -> Bool
+x `isSuperDir` y = splitDirectories x `isPrefixOf` splitDirectories y
+
+getImportDirSets
+  :: FilePath
+  -> FilePath
+  -> PackageDescription
+  -> ([[IncludeDir]], [[IncludeDir]])
+getImportDirSets cdir wdir pkgDesc = (map expand cabalBuildDirs : sourceDirSets libBIs, [cdir] : [wdir] : sourceDirSets otherBIs)
+  where
+    sourceDirSets bis = [ [expand (toPath d) | d <- P.hsSourceDirs bi] | bi <- bis ]
+    (libBIs, otherBIs) = cabalAllBuildInfo' pkgDesc
+    expand "." = cdir
+    expand subdir = cdir </> subdir
 
 ----------------------------------------------------------------
 -- Dependent packages
@@ -169,7 +202,12 @@ cabalCppOptions dir = do
 
 -- | Extracting all 'BuildInfo' for libraries, executables, and tests.
 cabalAllBuildInfo :: PackageDescription -> [BuildInfo]
-cabalAllBuildInfo pd = libBI ++ subBI ++ execBI ++ testBI ++ benchBI
+cabalAllBuildInfo pd = libBIs ++ otherBIs
+  where
+    (libBIs, otherBIs) = cabalAllBuildInfo' pd
+
+cabalAllBuildInfo' :: PackageDescription -> ([BuildInfo], [BuildInfo])
+cabalAllBuildInfo' pd = (libBI ++ subBI, execBI ++ testBI ++ benchBI)
   where
     libBI = map P.libBuildInfo $ maybeToList $ P.library pd
     subBI = map P.libBuildInfo $ P.subLibraries pd
