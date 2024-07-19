@@ -5,6 +5,7 @@ module Hhp.GHCApi (
     withGHC,
     withGHC',
     initializeFlagsWithCradle,
+    initializeFlagsWithCradle',
     setTargetFiles,
     getDynamicFlags,
     getSystemLibDir,
@@ -16,6 +17,7 @@ module Hhp.GHCApi (
     setDeferTypeErrors,
     setPartialSignatures,
     setWarnTypedHoles,
+    addImportPaths,
 ) where
 
 import GHC (DynFlags (..), Ghc, LoadHowMuch (..))
@@ -38,7 +40,6 @@ import GHC.Utils.Monad (liftIO)
 import Control.Applicative ((<|>))
 import Control.Monad (forM, void)
 import Control.Monad.Catch (SomeException, bracket, handle)
-import Data.Maybe (fromJust, isJust)
 import System.Exit (exitSuccess)
 import System.IO (hPrint, hPutStr, stderr)
 import System.IO.Unsafe (unsafePerformIO)
@@ -95,18 +96,27 @@ initializeFlagsWithCradle
     :: Options
     -> Cradle
     -> Ghc ()
-initializeFlagsWithCradle opt cradle
-    | cabal = withCabal <|> withSandbox
-    | otherwise = withSandbox
+initializeFlagsWithCradle opt cradle = void $ initializeFlagsWithCradle' opt cradle
+
+type GetImportDirs = [FilePath] -> [IncludeDir]
+
+initializeFlagsWithCradle'
+    :: Options
+    -> Cradle
+    -> Ghc GetImportDirs
+initializeFlagsWithCradle' opt cradle = case cradleCabalFile cradle of
+    Just cradleFile  -> withCabal cradleFile <|> withSandbox
+    Nothing          -> withSandbox
   where
-    mCradleFile = cradleCabalFile cradle
-    cabal = isJust mCradleFile
     ghcopts = ghcOpts opt
-    withCabal = do
-        pkgDesc <- liftIO $ parseCabalFile $ fromJust mCradleFile
+    withCabal cradleFile = do
+        pkgDesc <- liftIO $ parseCabalFile cradleFile
         compOpts <- liftIO $ getCompilerOptions ghcopts cradle pkgDesc
         initSession CabalPkg compOpts
-    withSandbox = initSession SingleFile compOpts
+        let wdir = cradleCurrentDir cradle
+            rdir = cradleRootDir cradle
+        return $ getImportDirectories rdir wdir pkgDesc
+    withSandbox = initSession SingleFile compOpts >> return (const $ includeDirs compOpts)
       where
         pkgOpts = ghcDbStackOpts $ cradlePkgDbStack cradle
         compOpts
@@ -128,16 +138,12 @@ initSession build CompilerOptions{..} = do
             =<< addCmdOpts
                 ghcOptions
                 ( setLinkerOptions $
-                    setIncludeDirs includeDirs $
-                        setBuildEnv build $
-                            setEmptyLogger $
-                                addPackageFlags depPackages df
+                    setBuildEnv build $
+                        setEmptyLogger $
+                            addPackageFlags depPackages df
                 )
 
 ----------------------------------------------------------------
-
-setIncludeDirs :: [IncludeDir] -> DynFlags -> DynFlags
-setIncludeDirs idirs df = df{importPaths = idirs}
 
 setBuildEnv :: Build -> DynFlags -> DynFlags
 setBuildEnv build = setHideAllPackages build . setCabalPackage build
@@ -233,6 +239,9 @@ allWarningFlags = unsafePerformIO $ do
 
 setCabalPkg :: DynFlags -> DynFlags
 setCabalPkg dflag = gopt_set dflag Opt_BuildingCabalPackage
+
+addImportPaths :: [IncludeDir] -> DynFlags -> DynFlags
+addImportPaths paths df = df{importPaths = paths ++ importPaths df}
 
 addPackageFlags :: [Package] -> DynFlags -> DynFlags
 addPackageFlags pkgs df =
