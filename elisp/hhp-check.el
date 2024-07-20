@@ -55,7 +55,7 @@ nil            does not display errors/warnings.
 (hhp-defstruct hilit-info file line msg err)
 
 (defun hhp-check-send ()
-  (let ((file (buffer-file-name)))
+  (let ((file (file-truename (buffer-file-name))))
     (if hhp-check-command
 	(let ((opts (hhp-haskell-list-of-string hhp-hlint-options)))
 	  (if opts
