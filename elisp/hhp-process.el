@@ -36,7 +36,7 @@
     (let* ((cbuf (current-buffer))
 	   (name hhp-process-process-name)
 	   (buf (get-buffer-create (concat " hhpi:" name)))
-	   (file (buffer-file-name))
+	   (file (file-truename (buffer-file-name)))
 	   (cpro (get-process name)))
       (hhp-with-current-buffer buf
         (setq hhp-process-original-buffer cbuf)
